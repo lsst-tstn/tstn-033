@@ -1,0 +1,9 @@
+% bibentry template for lsst.bib in https://github.com/lsst/lsst-texmf/blob/main/texmf/bibtex/bib/lsst.bib
+
+@DocuShare{TSTN-033,
+   author = { Russell Owen },
+    title = {Exploring Kafka for Telescope Control},
+     year = 2022,
+    month = Apr,
+   handle = {TSTN-033},
+      url = {https://tstn-033.lsst.io } }
