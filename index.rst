@@ -224,16 +224,12 @@ Latency was determined by writing 2000 messages at 20 Hz and measuring the time 
 | Kafka   |  1    |  forceActuatorData  |   3  |   0  |   3 |  23 |
 +---------+-------+---------------------+------+------+-----+-----+
 
-Kafka maximum latency is is on the edge of our requirements with acks=1,
-though the mean and standard deviations are small; indicating that Kafka has occasional outliers.
-Options for handling this include:
+Latency is only an issue for tracking commands, which are sent at approximately 20 Hz and specify position, velocity, and time.
+Tracking commands are presently sent at least 50 ms in advance, so it is possible that an occasional tracking command be late, due to an extreme outlier latency.
+This should not be a problem, because our specifications allow us to lose up to three sequential tracking commands, so we can afford to ignore (with a warning) the occasional late command.
 
-* Send tracking commands 10-20ms farther in advance.
-  This will decrease the responsiveness to new slews by the same small amount.
-
-* Live with it.
-  Occasional tracking commands will have a few ms of extrapolation.
-  Our control system is designed to handle this.
+We could also send send tracking commands a bit farther in advance.
+This will decrease the responsiveness to offsets and new slews by the same small amount.
 
 At one time Kafka had a reputation for long latency.
 We suspect this has improved because of the high-performance `Azul JVM <https://www.azul.com/products/core>`_ which Confluent uses in its Kafka docker images.
