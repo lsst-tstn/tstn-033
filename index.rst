@@ -594,6 +594,99 @@ Parsing XML Files
 The Kafka version of ts_salobj parses ts_xml topic schema files directly on the fly, instead of parsing OMG IDL files as the DDS version does.
 This turns out to be very fast; tests/test_speed.py on a mac report: "Created 859.3 topic classes/sec (129 topic classes); total duration 0.15 seconds" when parsing topic classes for MTM1M3, a component which has an unusually large number of topics, including several unusually large topics.
 
+Topic Partitioning
+------------------
+
+While both DDS and Kafka provide the concept of topic partitions, their purposes and usage differ significantly: DDS uses partitions for isolating topics, whereas Kafka uses them to optimize performance and scalability.
+
+In DDS, partitions have text-based names and can be freely created while producing or consuming topics.
+They are typically used to isolate topics, organizing them into logical groups.
+
+In Kafka, partitions are numbered, and the number of partitions for a topic must be preconfigured on the brokers.
+Increasing the number of partitions is possible, but reducing it is not straightforward.
+Additionally, it is possible to control which partition a topic is written to by using keys.
+In Kafka, partitions serve primarily to enhance system throughput by enabling parallelism.
+
+Another key aspect of topic partition in Kafka is that to ensure ordered delivery, topics need to be in the same partition.
+This is critical for CSC commands, especially in time-critical operations like tracking.
+However, since commands rely on command/acknowledgement procedure, it is hard to envision situations where commands from the same source would be delivered out of order.
+Furthermore, it is rare that more than one client issues commands to the same CSC and, in such cases, delivery order is probably not going to be critical.
+In any case, it is not advisable to partition command topics.
+
+For events and telemetry topics, the situation is a bit more nuanced.
+
+Event topics are asynchronously published by components to indicate state changes.
+Our system relies heavily on event topic delivery and even more so on ordered delivery.
+As such, we will not support partitioning of events.
+
+Telemetry is issued at a fixed rate, that can go up to 50Hz per system requirements.
+Since telemetry is published at a fixed rate, out of order delivery (especially of high throughput topics) is not really a problem, so long as the application layer discards older topics.
+In these situations, an out of order delivery would be treated as a missed delivery, which our system is designed to be resilient to.
+Finally, telemetry topics seem to be the least affected by topic partitioning and, as such, we provide support for partitioning of telemetry topics.
+However, it is advisable to use topic partitioning only in particular high throughput cases where it might be necessary as partitioning might lead to out of order delivery.
+
+On the application layer we enforce these criterias by applying the following rules;
+
+- All topics are created with 1 partition.
+- Command and event topics are written with a provided key.
+  Kafka ensures that topics with the same key value are all written to a single partition.
+  Therefore, even if someone inadvertently increases the number of partitions for a command or event topic, we still get the single partition behavior.
+- Telemetry topics are written with no key.
+  This allows the operators to increase the number of partitions for telemetry topics and Kafka will automatically handle writing samples to different partitions.
+
+In order to access the impact of increasing partition number in our system, we executed a read/write test for different publishing rates and measured the number of out of order topic delivery.
+For this test we used the same setup as the Performance tests, using the M1M3 ``forceActuatorData`` topic, which is the largest topic in the system.
+The topic partition was increased to 32 (which is the number of partitions used by the sasquatch connector :sqr:`068`) using the ``kafka-topics`` cli tool shipped with Kafka tools.
+We did not experiment with different partitioning values as the number is well established at this point.
+
+The command used to expand the number of partitions was:
+
+.. prompt:: bash
+
+   kafka-topics --bootstrap-server $LSST_KAFKA_BROKER_ADDR --topic "lsst.${LSST_TOPIC_SUBNAME}.MTM1M3.forceActuatorData" --alter --partitions 32
+
+The results are shown in the table and figure below.
+
++--------------+--------------+
+| Publish rate | Data loss    |
++--------------+--------------+
+|    Hz        |    %         |
++==============+==============+
+|  <=50        |    0         |
++--------------+--------------+
+|   100        |    0.01      |
++--------------+--------------+
+|   400        |    0.18      |
++--------------+--------------+
+|  1000        |    0.21      |
++--------------+--------------+
+|  2000        |    0.21      |
++--------------+--------------+
+|  2500        |    0.42      |
++--------------+--------------+
+|  3000        |    7.28      |
++--------------+--------------+
+|  4000        |    19.8      |
++--------------+--------------+
+|  5000        |    36.0      |
++--------------+--------------+
+| >6000 (Max)  |    38.0      |
++--------------+--------------+
+
+.. figure:: /_static/rate.png
+   :name: fig-rate
+   :target: ../_images/rate.png
+   :alt: Rate
+
+   Results of the data loss vs throughput for topic partition of 32.
+   The x-axis has the publish rate (in Hz) depicted in a logarithm scale and the y-axis the percentage of missed data.
+   For rates of up to 50Hz we do not observe any message loss.
+
+Our system experiences no missed data at operating rates up to 50 Hz.
+At 100 Hz, we start to experience out-of-order delivery which remains negligible up to 2.5kHz.
+The effect becomes significant only at extremely high rates, exceeding 3 kHz, reaching substantial levels (~38% loss) at the maximum publish rate (above 6 kHz).
+These results confirm that the impact of out-of-order delivery due to topic partitioning is negligible under normal operating conditions.
+
 Other Changes
 -------------
 
