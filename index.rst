@@ -1,4 +1,6 @@
-:tocdepth: 1
+#####################################
+Exploring Kafka for Telescope Control
+#####################################
 
 .. Metadata such as the title, authors, and description are set in metadata.yaml
 
